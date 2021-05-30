@@ -1,0 +1,1057 @@
+Prosper Loan Analysis by Matthew Dolder
+========================================================
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using in your analysis in this code
+# chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk. This
+# prevents the code from displaying in the knitted HTML output. You should set
+# echo=FALSE for all code chunks in your file, unless it makes sense for your
+# report to show the code that generated a particular plot.
+
+# The other parameters for "message" and "warning" should also be set to FALSE
+# for other code chunks once you have verified that each plot comes out as you
+# want it to. This will clean up the flow of your report.
+
+
+
+library(ggplot2)
+library(dplyr)
+library(sqldf)
+library(lubridate)
+library(scales)
+library(gridExtra)
+```
+
+
+
+```{r echo=FALSE, Load_the_Data,  warning=FALSE}
+# Load the Data
+loans<-read.csv("prosperLoanData.csv")
+
+```
+
+
+Reference: 
+https://www.nerdwallet.com/reviews/loans/personal-loans/prosper-personal-loans
+
+Prosper is peer-to-peer lending institution.  Borrowers apply for loans much 
+like a bank loan and any number of people can invest in the loan expecting 
+a return.  
+
+Looking at the csv file, I noticed a wide range in the number of investors.  
+
+ Investors      
+ Min.   :   1.00  
+ 1st Qu.:   2.00  
+ Median :  44.00  
+ Mean   :  80.48  
+ 3rd Qu.: 115.00  
+ Max.   :1189.00  
+
+Why do some loans attract so many investors while many, over 27,800 attract
+only 1 investor?  Are investors looking for high risk loans which pay a 
+higher APR?  Are they looking for low risk loans?  Are the motivations 
+even financial?  Perhaps they want to support teachers, nurses, and fireman to 
+feel they are doing a service to the community.  Perhaps they favor homeowners.  
+Perhaps it's simply the length of time since the 
+loan was created, giving more time for investors to jump on board.  
+
+# Univariate Plots Section
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+#examine size of dataset
+tcount<-nrow(loans) 
+tcount
+#There are 113,937 loans in the dataset.
+
+#The number of variables is massive
+#Here I limit the dataset to the variables we are interested in
+#That will make it easier to investigate the data and perhaps improve
+#performance
+loanvars<-c("Investors","Occupation","DebtToIncomeRatio","ProsperScore",
+"LoanOriginalAmount","Term","LoanStatus","ListingCreationDate",
+"LoanMonthsSinceOrigination","TotalProsperLoans","BorrowerAPR",
+"CreditScoreRangeUpper","IsBorrowerHomeowner","EmploymentStatus")
+loans<-loans[loanvars]
+summary(loans)
+
+
+```
+
+
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_1, warning=FALSE}
+
+
+#show histogram of investor count
+ggplot(data=subset(loans,Investors < 400),aes(x=Investors)) + 
+  geom_histogram(color = I('black'), fill = I('#099DD9'))
+#most loans have 1 investor
+
+```
+
+Figure 1. Histogram of the Investor variable.
+
+This graph is capped at 400 investors.  The max number of investors for a single
+loan is 1,189.  The graph shows that most loans have 1 investor only.  
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_2, warning=TRUE}
+#reference: 
+#https://discuss.analyticsvidhya.com/t/how-to-count-number-of-distinct-values-in-a-column-of-a-data-table-in-r/1124/2
+#sqldf("select distinct(Occupation) from loans")  
+#68 distinct Occupations returned
+
+occupation <- loans %>%
+  group_by(Occupation) %>%
+  summarize(loan_count = n()) %>%
+  arrange(desc(loan_count)) %>%
+  slice_head(n=20)
+
+#show count of each occupation
+#x = reorder(day, -perc)
+  ggplot(data=occupation,aes(y=reorder(Occupation,loan_count), x=loan_count)) + 
+  geom_bar(stat='identity',color = I('black'), fill = I('#099DD9'),position="stack") +
+  ylab("occupation") + xlab("loan count")
+
+empstatus <- subset(loans,Occupation="Other") %>%
+  group_by(EmploymentStatus) %>%
+  summarize(loan_count = n()) %>%
+  arrange(desc(loan_count)) 
+
+ 
+  ggplot(data=empstatus,aes(y=reorder(EmploymentStatus,loan_count), x=loan_count)) + 
+  geom_bar(stat='identity',color = I('black'), fill = I('#099DD9'),position="stack") +
+  ylab("employment status for (Other)") + xlab("loan count")
+
+
+```
+
+Figure 2. Number of Loans by Occupation. 
+Figure 3. Number of Loans by employment status where Occupation = "Other"
+
+Figure 2 shows that "Other" is the most popular occupation.  This isn't
+very helpful for analysis.  Figure 3 shows that for loans where occupation
+is other, we can tease more information from the employment status such as 
+"self-employed" or "retired".  
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_4, warning=FALSE}
+
+#show histogram of DebtToIncomeRation
+ggplot(data=subset(loans,DebtToIncomeRatio < 1),aes(x=DebtToIncomeRatio)) + 
+  geom_histogram(color = I('black'), fill = I('#099DD9'))  
+
+```
+
+Figure 4. Loan count by Debt to Income Ration
+
+This graph shows that Prosper has a preference towards borrowers with a 
+Debt to Income ratio between 0.1 and 0.3. 
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_5, warning=FALSE}
+
+#show ProsperScore
+ggplot(data=loans,aes(x=factor(ProsperScore))) + 
+  geom_bar(color = I('black'), fill = I('#099DD9')) +
+  xlab("Prosper Score")
+#only available for 2009 and later
+
+```
+
+Figure 5. Loan count by Prosper score. 
+
+Prosper score is the result of risk formula applied to loans starting in 2009.
+Loans originating prior to 2009 show as "NA". 
+  
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_6, warning=FALSE}
+
+#Show histogram of loan size
+ggplot(data=loans,aes(x=LoanOriginalAmount)) + 
+  geom_histogram(color = I('black'), fill = I('#099DD9'))  
+
+```
+
+Figure 6.  Loan count by Amount in Dollars.  
+
+Few loans are above $25,000.  
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_7, warning=FALSE}
+
+#Show loan terms and number of each.
+ggplot(data=loans,aes(x=factor(Term))) + 
+  geom_bar(color = I('black'), fill = I('#099DD9')) + 
+  xlab("Term")
+
+```
+
+Figure 7.  Loan count by Term (length of loan)
+
+36 months is the most popular term.  
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_8, warning=FALSE}
+
+#show number of loans with each status
+ggplot(data=loans,aes(y=LoanStatus)) + 
+  geom_bar(color = I('black'), fill = I('#099DD9'))  
+
+```
+
+Figure 8.  Loan count by Status.  
+
+Current and Complete are the most popular categories.  
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_9, warning=FALSE}
+#parse year from loan start date and put in a new variable
+loans <- loans %>% mutate(ListingCreationYear = year(ListingCreationDate))
+#This will make grouping by year easier later. 
+
+#reference
+#https://stackoverflow.com/questions/50935857/ggplot2-keeps-adding-5-at-end-of-year-variable-on-x-axis
+#show number of loans per year. 
+ggplot(data=loans,aes(x=ListingCreationYear)) + 
+  geom_bar(color = I('black'), fill = I('#099DD9')) + 
+  scale_x_continuous(breaks = 0:2100)
+
+
+```
+
+
+Figure 9.  Loans issued by year.  
+
+The dataset begins in November 2005, hence the small number there.  
+In 2009 changes in banking regulations due to the recession clearly had an affect.  
+Prosper has grown considerably since.  The data set ends in March 2014.
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_10, warning=FALSE}
+
+#show current length of loan
+ggplot(data=subset(loans,loanstatus="Current"),aes(x=LoanMonthsSinceOrigination)) + 
+  geom_bar(color = I('black'), fill = I('#099DD9')) 
+#The largest term length is 60 months.
+#However Prosper continues counting months after the loans are completed. 
+
+#Add a variable called "months_active" which stops at the end of the term. 
+loans <- loans %>% 
+  mutate(months_active = 
+  ifelse(LoanMonthsSinceOrigination > Term,Term,LoanMonthsSinceOrigination))
+
+```
+
+Figure 10.  Number of loans by months since origination. 
+
+This is a strange variable because the months keep counting up after the loan 
+is complete.  
+
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_11, warning=FALSE}
+
+#Number of Prosper loans the borrower at the time they created this listing. 
+#This value will be null if the borrower had no prior loans. 
+ggplot(data=subset(loans,loanstatus="Current"),aes(x=TotalProsperLoans)) + 
+  geom_bar(color = I('black'), fill = I('#099DD9')) 
+
+```
+
+Figure 11.  Number of loans by 'total prosper loans'
+
+The TotalProsperLoans variable is the number of Prosper loans the borrower 
+previously had.  My assumption is that preference is given to repeat customers.  
+The majority of loans are first time borrowers.  
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_12, warning=FALSE}
+
+#The Borrower's Annual Percentage Rate (APR) for the loan.
+ggplot(data=loans,aes(x=BorrowerAPR)) + 
+  geom_histogram(color = I('black'), fill = I('#099DD9')) 
+
+```
+
+Figure 12. Number of loans by APR
+
+Generally, a higher APR is given to loans with a higher risk and can also leads 
+to a higher return.   
+
+```{r echo=FALSE, message=FALSE, Univariate_Plot_13, warning=FALSE}
+
+#Plot number of loans with max DTI as defined by the loan documentation
+ggplot(data=subset(loans,loans$DebtToIncomeRatio==10.01),
+       aes(x=Investors)) +
+  geom_histogram(color = I('black'), fill = I('#099DD9'))
+
+
+```
+
+Figure 13.  Number of investors where debt to income ratio is 10.01
+
+I found it interesting that anyone would invest in a loan with such a 
+high debt to income ratio.  
+
+# Univariate Analysis
+
+
+### What is the structure of your dataset?
+
+The dataset contains 80 variables and nearly 114,000 observations.  
+The variables describe the terms of the loan, the repayment status, 
+and the financial health of the borrower.  
+
+
+### What is/are the main feature(s) of interest in your dataset?
+
+I'm interested in information about the borrower or the loan which 
+influences investors to choose a loan.
+
+
+### What other features in the dataset do you think will help support your 
+
+The data spans the 2008 recession. Comparing loans before and after may 
+show a shift in investor's behavior or even a change lending regulations. 
+Prosper Score was added in 2009 as a result of the recession and new 
+regulations.  Does this impact the number of investors? 
+
+
+### Did you create any new variables from existing variables in the dataset?
+
+ListingCreationYear: Contains year parsed from ListingCreationDate
+months_active:  Number of months since loan was created, but capped at the 
+                term of the loan.  
+                
+# Bivariate Plots Section
+
+What attracts investors to loans?  Are they choosing wisely?  Loan 
+Status vs Investor count could show us if they are choosing wisely.  
+Do loans in default have a high number of investors?  
+
+Debt to income ratio (DTI) looks interesting.  The population of total loans are
+grouped around a seemingly low DTI with a few at the high end.  In the 
+bivariate plots section, I want to compare investors to DTI and see 
+if the number of investors has a similar graph as the total number of loans 
+or if investors are disproportionately flocking toward borrowers with a higher 
+risk.  
+
+I'm also interested in investors per year because the data spans a period 
+both before and after the 2008 recession.  Were investors careless before 2008
+and more conservative after?  
+
+Does occupation impact the number of investors? Perhaps they aren't choosing
+based on calculations, but instead feel a need to support teachers. 
+
+I'm not as interested in Prosper score as there is no data prior to 2009.
+
+
+
+```{r echo=FALSE, Bivariate_Plots_1, warning=FALSE}
+
+###################################################
+#using dplyr, summarize Investors by loan status 
+#reference:  Udacity Lesson 6: Explore two variables
+loans.investors_by_status <- loans %>%
+  group_by(LoanStatus) %>%
+  summarize(mean_investors = mean(Investors),
+            median_investors = median(Investors),
+            n=n())
+#Plot the mean number of investors by loan status from the previous statement.
+p1 <- ggplot(data=loans.investors_by_status,aes(x=LoanStatus,y=n)) + 
+  geom_col(color = I('black'), fill = I('#099DD9')) + 
+  scale_x_discrete(guide = guide_axis(n.dodge=3)) + 
+  ylab("number of investors")
+
+p2 <- ggplot(data=loans.investors_by_status,aes(x=LoanStatus,y=mean_investors)) + 
+  geom_col(color = I('black'), fill = I('#099DD9')) + 
+  scale_x_discrete(guide = guide_axis(n.dodge=3)) + 
+  ylab("mean number of investors")
+
+grid.arrange(p1,p2)
+####################################################
+
+```
+
+Figure 14. Investors by Loan Status
+
+This graph shows the total number of investors by loan status.  Status of 
+"Current" has the most number of loans so the top graph is not surprising.  
+Looking at the mean investors per status, we can see loans which performed 
+poorly can have many investors per loan.  
+
+```{r echo=FALSE, Bivariate_Plots_2, warning=FALSE}
+
+####################################################
+#summarize Investors by Occupation
+loans.investors_by_occupation <- loans %>%
+  group_by(Occupation) %>%
+  summarize(mean_investors = mean(Investors),
+            median_investors = median(Investors),
+            n=n()) %>%
+  arrange(mean_investors)
+
+#since there are so many occupations, focus on those above the 
+#3rd quantile in mean_investors
+summary(loans.investors_by_occupation$mean_investors) #93.66
+
+#subset previous grouping by 3rd quartile
+occupation_with_most_investors <- 
+  subset(loans.investors_by_occupation,mean_investors > 93.66)
+
+#plot the mean number of investors by occupation for 3rd quartile
+ggplot(data=occupation_with_most_investors,
+       aes(x=mean_investors,y=reorder(Occupation,mean_investors,sum))) +
+  geom_col(color = I('black'), fill = I('#099DD9')) +
+  ylab("occupation") + 
+  xlab("mean investors per occupation")
+
+#########################################################
+
+```
+
+Figure 15. Mean number of investors per occupation
+
+This graph shows the occupation of borrowers which investors are most 
+interested in.  Looking at this alone, we can't tell if investors are 
+choosing by occupation or if these occupations just happen to have the 
+best credit score.  
+
+```{r echo=FALSE, Bivariate_Plots_3, warning=FALSE}
+
+#########################################################
+#summarize Investors by credit score
+loans.credit_score_by_occupation <- loans %>%
+  group_by(Occupation) %>%
+  summarize(mean_credit = mean(CreditScoreRangeUpper),
+            median_credit = median(CreditScoreRangeUpper),
+            n=n()) %>%
+  arrange(mean_credit)
+
+#grab the 3rd quartile
+summary(loans.credit_score_by_occupation$mean_credit)
+#mean_credit 3rd Qu.:717.7
+
+#subset by 3rd quertile
+occupation_with_highest_credit_score <- 
+  subset(loans.credit_score_by_occupation,mean_credit > 717.7)
+
+#Plot the mean credit score by occupation  
+ggplot(data=occupation_with_highest_credit_score,
+       aes(x=mean_credit,y=reorder(Occupation,mean_credit,sum))) +
+  geom_col(color = I('black'), fill = I('#099DD9')) +
+  ylab("occupation") + 
+  xlab("mean credit score by occupation")
+#Examine overlap with the previous plot.  Do the same occupations
+#appear at the top? 
+#########################################################
+
+```
+
+Figure 16. Mean credit score by occupation
+
+This graph shows the 18 occupations where borrowers have the highest 
+mean credit score.  The different in credit score between each one is trivial. 
+What is interesting is the overlap of occupations with Figure 15.  
+With a few exceptions, such as Fireman and Military Officer, the occupations 
+with the highest mean number of investors also have the highest mean credit score.  
+
+
+```{r echo=FALSE, Bivariate_Plots_4, warning=FALSE}
+
+
+#########################################################
+#Plot the number of Investors by credit score
+ggplot(data=subset(loans,loans$CreditScoreRangeUpper>400 
+                   & loans$Investors < 1000 & 
+                     loans$Investors > 0),
+       aes(x=Investors,y=CreditScoreRangeUpper)) +
+  geom_point(alpha=1/100) +
+  ylab("credit score range - upper")
+#There appears to be a cutoff around credit score 700.
+#the number of investors starts dropping.  There is also 
+#a cutoff at the very top range.  
+########################################################
+
+```
+
+Figure 17.  Number of investors by credit score where credit score is above 
+            400 and number of investors is greater than 0 and less than 1000.
+
+This graph shows a high concentration of loans and investors around the 750
+credit score mark.  Few loans have a very high number of investors and 
+few have a credit score below 500.  
+
+I would expect this graph to be the most dense at the top of the credit score 
+range.   My guess is that few people have a perfect score and very few of 
+those people are interested in borrowing money from Prosper.  
+
+
+
+```{r echo=FALSE, Bivariate_Plots_5, warning=FALSE}
+
+########################################################
+#Plot investors by months_active
+ggplot(data=loans,
+       aes(x=Investors,y=months_active)) +
+  geom_point(alpha=1/100) +
+  ylab("months active")
+#There appears to be a huge spike at 36months
+########################################################
+
+```
+
+Figure 18.  Number of investors by months active.  
+
+Months active is a custom variable which shows takes the number of months
+since loan origination and caps it at the term of the loan.  I wanted to 
+see if more investors jump on board a loan as time goes on.  It 
+appears that is not the case, however, there is a higher concentration 
+of investors at 12 & 36 months which are popular term lengths.  
+
+```{r echo=FALSE, Bivariate_Plots_6, warning=FALSE}
+
+########################################################
+#Plot investors by Debt to Income Ratio
+#I'll abbreviate this as DTI in the future
+ggplot(data=loans,
+       aes(x=Investors,y=DebtToIncomeRatio)) +
+  geom_point(alpha=1/20) +
+  ylab("debt to income ratio")
+
+```
+
+Figure 19.  Number of investors by debt to income ratio. 
+
+This graph shows that out of the entire population of loans, investment
+is heavy below 0.1 debt to income.  It also shows an unusual outlier at the top 
+end of debt to income ratio.  These are loans where debt to income is greater
+than 100%.  Why would anyone invest in such risky loans?  Perhaps 
+there is another factor such as occupation.  
+
+```{r echo=FALSE, Bivariate_Plots_7, warning=FALSE}
+
+#plot Investors by occupation for max DTI
+ggplot(data=subset(loans,loans$DebtToIncomeRatio==10.01 & loans$Investors>100),
+       aes(x=Investors,reorder(Occupation,Investors,sum))) +
+  geom_col() + 
+  ylab("occupation")
+#by far Other is the most popular Investment category in 100% DTI
+
+```
+
+Figure 20.  Number of investors by occupation where debt to income ratio = 10.01
+
+Figure 20 expands on Figure 19 by looking at borrowers with a maximum 
+debt to income ratio.  Unfortunately, the largest category by far is "other". 
+This doesn't tell us much about the borrower.  
+
+```{r echo=FALSE, Bivariate_Plots_8, warning=FALSE}
+
+#plot Investors by employment status for Max DTI 
+ggplot(data=subset(loans,
+                   loans$DebtToIncomeRatio==10.01 & loans$Occupation=="Other"),
+       aes(x=Investors,y=EmploymentStatus)) +
+  geom_col() + 
+  ylab("employment status")
+
+#This helps to break up the Other category a bit. 
+#Investors drawn to Max DTI appear to be drawn to those who are 
+#self-employed.  
+
+```
+
+Figure 21.  Investors by employment status where debt to income ratio = 10.01
+            and occupation = "Other"
+            
+Figure 21 expands on Figure 19 & 20 by breaking down the other category
+into employment status.  Here we can see investors are drawn to self-employed
+borrowers with a high debt to income.  My assumption is that these are 
+business loans and investors are taking a chance on a business idea.  
+
+Could homeowner status also have an impact on these high risk loans?  
+
+```{r echo=FALSE, Bivariate_Plots_9, warning=FALSE}
+
+#Plot investors by home ownership status for those with max DTI
+p1 <- ggplot(data=subset(loans,loans$DebtToIncomeRatio==10.01 & loans$Occupation=="Other"),
+       aes(x=Investors,y=IsBorrowerHomeowner)) +
+  geom_col() + 
+  ylab("homeowner") + 
+  labs(title = "Investors by homeownership for 10.01 debt to income")
+
+p2 <- ggplot(data=loans,
+       aes(x=Investors,y=IsBorrowerHomeowner)) +
+  geom_col() + 
+  ylab("homeowner")+ 
+  labs(title = "Investors by homeownership for all loans")
+
+grid.arrange(p1,p2)
+
+########################################################################
+
+
+```
+
+Figure 22.  Investors by homeowner status for high risk loans and all loans.  
+
+Figure 22 shows that high risk loans given to homeowners have a higher 
+proportion of investors than the entire population of loans.  However in 
+both cases that Prosper lending system favors homeowners. 
+
+Expanding more on Figure 19. Number of investors by debt to income ratio
+The population is so heavy in the 0 - 0.1 range, that zooming in may shed some
+light.  
+
+```{r echo=FALSE, Bivariate_Plots_10, warning=FALSE}
+
+#Group by DTI
+total_investors_by_DTI <- 
+  loans %>%
+  group_by(DebtToIncomeRatio) %>%
+  summarize(investors = sum(Investors),
+            mean= mean(Investors),
+            n=n()) %>%
+  arrange(DebtToIncomeRatio) %>%
+  mutate(id = row_number(),rt=cumsum(n))
+
+#102838 loans have a DTI or 0.6 or less. 
+#sqldf ('select count(*) from loans where DebtToIncomeRatio <= 0.60000 ')
+
+
+#Plot mean investors by DTI demonstrating the density of loans at low DTI
+#references:
+#https://www.reddit.com/r/rstats/comments/9ecr6g/possible_to_add_vertical_lines_for_1st_and_3rd/
+#https://stackoverflow.com/questions/18091721/align-geom-text-to-a-geom-vline-in-ggplot2
+
+#total_investors_by_DTI
+
+ggplot(data=total_investors_by_DTI,
+      aes(x=DebtToIncomeRatio)) +
+      geom_point(aes(y=investors)) +
+      scale_x_continuous(breaks=c(0,0.6,2.5,5.0,7.5,10.01)) +
+      scale_y_continuous(labels = label_number(suffix = "K", scale = 1e-3)) +
+      geom_smooth(aes(y=investors)) +
+      ylab("investors") +
+      xlab("debt to income ratio") +
+      labs(title = "Investors by Debt to Income Ratio") 
+      
+
+
+
+ggplot(data=subset(total_investors_by_DTI,DebtToIncomeRatio <= 0.6),
+      aes(x=DebtToIncomeRatio)) +
+      geom_point(aes(y=investors)) +
+      scale_y_continuous(labels = label_number(suffix = "K", scale = 1e-3)) +
+      geom_smooth(aes(y=investors)) +
+      ylab("investors") +
+      xlab("debt to income ratio") +
+      labs(title = "Investors by Debt to Income Ratio") 
+      
+
+```
+
+
+Figure 23.  Debt to income ratio by number of investors
+Figure 24.  Debt to income ratio by number of investors for 90% of loans.  
+
+Figure 23 & 24 show that Prosper and investors favor borrowers with a 
+debt to income of 0.6 or less.  
+
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+I found that investors weren't drawn to a particular loan status.  
+
+They do seem to be drawn to particular professions, but for the most part
+those professions also have high credit scores.  Doctor, Judge, Pharmacist, 
+Pilot, Computer Programmer, Professors, Scientist, are examples of professions 
+which both have a high number of investors and a high credit score. 
+Perhaps more interesting is Fireman which shows on the list of top investors,
+but not on the list of top credit scores.  
+
+There does appear to be a correlation between number of investors and
+credit score which is not surprising.  Looking at Debt to Income Ratio (DTI), 
+Investors have a strong bias for low DTI, which also is not surprising.  
+However, I was very surprised to see a spike at the extreme high end of DTI.  
+According to the documentation, 10.01 is a cap for DTI and it represents
+more than 100% debt to income.  I would assume these borrowers have no chance
+of paying back the loan and should not have any investors.  
+
+I zoomed into the data to look at those occupations which have extremely high 
+DTI and found the majority to be self-employed.  I believe these are business
+loans and the investors must be interested in taking a risk on a business idea. 
+I can't tell from the documentation if the investors get to see a business
+plan before choosing a loan or if they have to choose based solely on 
+borrower's statisticss. 
+
+Finally, I found a large difference between investors choosing homeowners 
+over non-homeowners.  One assumption that can be made, at least in the 
+United States, is that homeowners tend to be a bit older and more established.  
+According to nerdwallet.com, prosper loans are very popular for 
+home improvement loans which could be another explanation.  
+Perhaps these two factors compound to make such a striking difference.  A
+another possibility is that the housing bubble pre-2009 lead to a frenzy of 
+home equity loans and investors.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+### What was the strongest relationship you found?
+
+Number of total investors by home ownership status. 
+
+
+# Multivariate Plots Section
+
+
+```{r echo=FALSE, Multivariate_Plot_block_1, warning=FALSE}
+
+###########################################################
+#Build a dataset for Multivariate Plot #1 which will compare 
+#loans with a DTI ceiling with loans below the ceiling per year
+#Was there a feeding frenzy of high risk loans leading up the 2008 recession?
+##
+
+#create a grouping of loans per year where the DTI is at the ceiling
+mean_investors.year.max.dti <- 
+  subset(loans,loans$DebtToIncomeRatio == 10.01) %>%
+  group_by(ListingCreationYear) %>%
+  summarize(mean_investors = round(mean(Investors),digits=1),
+            median_investors = median(Investors),
+            n=n()) %>% mutate(event="max") %>%
+  arrange(ListingCreationYear)
+
+#create a grouping of loans per year where the DTI is below the ceiling
+mean_investors.year.regular.dti <- 
+  subset(loans,loans$DebtToIncomeRatio < 10.01) %>%
+  group_by(ListingCreationYear) %>%
+  summarize(mean_investors = round(mean(Investors),digits=1),
+            median_investors = median(Investors),
+            n=n())  %>% mutate(event="regular") %>%
+  arrange(ListingCreationYear)
+
+#add records for the years where there were no loans above the ceiling
+#this keeps the graph easy to read
+missing_values <- data.frame(c(2005,2009,2014),
+                            c(0,0,0),
+                            c(0,0,0),
+                            c(0,0,0),
+                            c('max','max','max'))
+names(missing_values) <- c("ListingCreationYear","mean_investors","median_investors","n","event")
+
+#combine the two previous groupings into one dataframe
+mean_investors.year <- 
+    rbind(mean_investors.year.regular.dti,mean_investors.year.max.dti,missing_values)
+
+#add to each row total loans for that year for comparison
+loans.year <- subset(loans,loans$DebtToIncomeRatio > 0) %>% 
+            group_by(ListingCreationYear) %>%
+            summarize(total = n())
+
+
+#join mean_investors.yeat dataset to loans.year dataset.  
+#also add spaces to get percent lables to line on either side of the 
+#of the y axis
+mean_investors.year <-
+          sqldf('select y.*,l.total,
+                case
+                  when event = "regular" then "     "
+                END
+                || round((y.n/l.total)*100,2) 
+                || "%"
+                as percent 
+                from "mean_investors.year" y inner join 
+              "loans.year" l on y.ListingCreationYear = l.ListingCreationYear')
+
+
+#Completed dataframe for Final Plot #1 
+#mean_investors.year
+
+#Plot 1
+
+#mean_investors.year
+
+ggplot(data=mean_investors.year,
+      aes(x=factor(ListingCreationYear),y=n,fill=event)) +
+      geom_col(position = 'dodge') +
+      scale_x_discrete(position = "bottom") + 
+      geom_text(aes(label=percent),size = 3,angle=70,vjust=1.5) + 
+      xlab("Listing Creation Year") + 
+      ylab("Investors") + 
+      labs(title ="Investors by Creation Year",
+           subtitle = "with percentage of total regular loans")
+#this groph shows a yearly trend of mean investors peaking in 2009.
+#It shows a surprisingly high investor mean for loans where the DTI as 
+#beyond the max, however these represent a tiny percentage of the loans.
+###########################################################
+
+```
+
+Figure 25. mean investors per year for normal and high risk loans
+
+This graph shows the number of investors per year.  It is split into 
+two parts, those which are regular borrowers (below max debt to income ratio)
+and those which are high risk borrowers (all debt and no income). The 
+graph also shows in text the percentage of total loans which are to regular borrowers.  
+
+The purpose is to show a feeding frenzy of investors looking for high risk
+investments leading up to the recession.  However, this graph doesn't fit 
+the narrative.  Loans and Investors rise quickly after the recession 
+and the percentage of loans to borrowers with 100% debt to income is so tiny 
+that it barely shows on this scale.  
+
+We saw in previous graphs some speculators going after high risk loans 
+of self-employed borrowers, but that is clearly a rare occurrence.  
+
+
+```{r echo=FALSE, Multivariate_Plot_block_2, warning=FALSE}
+ggplot(data=subset(loans,
+                   DebtToIncomeRatio <= 0.60000 & 
+                   Investors <= 750 & 
+                   Investors > 0),
+      aes(x=DebtToIncomeRatio,y=Investors,group=IsBorrowerHomeowner,color=IsBorrowerHomeowner))+
+      geom_point(alpha=1/10) + 
+      #scale_y_continuous(labels = label_number(suffix = "", scale = 1e-6)) +
+      xlab ("debt to income ratio") +
+      ylab ("investors per loan") +
+      labs (title = "Investors by debt to income ratio and homeowner status",
+            color = "Homeowner") + 
+      geom_smooth()
+
+```
+
+Figure 26.  Investors by debt to income ration and homeowner status.  
+
+This graph shows a preference for a borrower with debt to income ratio 
+between 1.5 and 2.5 and is a homeowner.  
+
+
+```{r echo=FALSE, Multivariate_Plot_block_3, warning=FALSE}
+
+#Group by DTI
+#85k loans have prosper score
+#2009 and later
+prosper_scores <- subset(loans,!is.na(ProsperScore) & !is.na(DebtToIncomeRatio))
+
+prosper_score_by_DTI <- 
+  prosper_scores %>%
+  group_by(ProsperScore) %>%
+  summarize(mean= mean(DebtToIncomeRatio),
+            median= median(DebtToIncomeRatio),
+            n=n()) %>%
+  arrange(ProsperScore)
+
+prosper_score_by_credit <- 
+  prosper_scores %>%
+  group_by(ProsperScore) %>%
+  summarize(mean= mean(CreditScoreRangeUpper),
+            median= median(CreditScoreRangeUpper),
+            n=n()) %>%
+  arrange(ProsperScore)
+
+p1<- ggplot(data=prosper_score_by_DTI,
+       aes(x=ProsperScore,y=mean)) +
+  geom_bar(stat='identity',color = I('black'), fill = I('#099DD9')) +
+  ylab("mean debt to income ratio") +
+  xlab("Prosper score") +
+  labs (title = "mean debt to income by Prosper score")
+  
+p2<- ggplot(data=prosper_score_by_credit,
+       aes(x=ProsperScore,y=mean)) +
+  geom_bar(stat='identity',color = I('black'), fill = I('#099DD9')) +
+  scale_y_continuous(limits=c(650,800),oob = rescale_none) +
+  ylab("mean credit score") +
+  xlab("Prosper score")+
+  labs (title = "mean credit score by Prosper score") 
+  
+  
+
+grid.arrange(p1,p2) 
+
+#completed dataset for final plot #3
+#head(prosper_score_by_DTI)
+
+```
+
+Figure 27.  Debt to Income and Credit Score by Prosper score.  
+
+This graph shows that with the introduction of the Prosper score in 2009,
+risk assessment continued to use debt to income ratio and credit score
+as a factor.  The two variables (credit score and debt to income) follow
+nearly identical patterns when compared to Prosper score.  
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+Looking at investors by debt to income ratio and investors per year 
+investing in high risk loans, I came to the conclusion that Prosper investors
+are by and large looking for a safe investment, not wild speculation.  There
+are a few exceptions, but those loans are less than 1% of the population.
+
+The introduction of Prosper score in 2009 supports that analysis by 
+prosper giving a better score to borrowers with a high credit score and high 
+debt to income ratio.
+
+### Were there any interesting or surprising interactions between features?
+
+I was surprised by the consistency for investors to favor homeowners across
+the entire range of debt to income.  That can't be by chance. Another 
+variable must be influenced by home owner status which is in turn influencing
+the number of loans created and the number of investors.  .  
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+
+```{r echo=FALSE, Plot_One, warning=FALSE}
+#Plot 1
+
+ggplot(data=mean_investors.year,
+      aes(x=factor(ListingCreationYear),y=n,fill=event)) +
+      geom_col(position = 'dodge') +
+      scale_x_discrete(position = "bottom") + 
+      geom_text(aes(label=percent),size = 3,angle=70,vjust=1.5) + 
+      xlab("Listing Creation Year") + 
+      ylab("Investors") + 
+      labs(title ="Investors by Creation Year",
+           subtitle = "with percentage of total regular loans")
+#
+
+```
+
+### Description One
+
+I chose the breakdown of investors per year split into regular and maximum
+debt to income ratio.  We showed earlier how a few high risk loans can 
+attract a massive number of investors, however, this is clearly not the norm.  
+It would be interesting to draw this same graph with data leading up to present 
+day and see if the trend continues.  It would also be interesting to have 
+rolling datato see when investors get on board with a loan.  When a loan reaches 
+some critical mass of investors, do others simply follow the herd?  
+
+### Plot Two
+
+```{r echo=FALSE, Plot_Two, warning=FALSE}
+
+ggplot(data=subset(loans,
+                   DebtToIncomeRatio <= 0.60000 & 
+                   Investors <= 750 & 
+                   Investors > 0),
+      aes(x=DebtToIncomeRatio,y=Investors,group=IsBorrowerHomeowner,color=IsBorrowerHomeowner))+
+      geom_point(alpha=1/10) + 
+      #scale_y_continuous(labels = label_number(suffix = "", scale = 1e-6)) +
+      xlab ("debt to income ratio") +
+      ylab ("investors per loan") +
+      labs (title = "Investors by debt to income ratio and homeowner status",
+            color = "Homeowner") + 
+      geom_smooth()
+
+
+```
+
+### Description Two
+
+For plot 2, I chose to show debt to income ratio vs investors
+for borrowers with a DTI of 0.6 or less, separated by homeowner status.  
+I chose 0.6 because 90% of all loans fall within this range.  This graph 
+shows that both prosper and investors are attracted to borrowers with a 
+certain range of debt to income between 0.15 and 0.2.  This shows investors
+are looking for a safe investment.  
+
+We don't have data for individual investors. Therefore, if a single investor
+invests in multiple loans, he or she is counted many times.  It would be 
+interesting to know about the investor.  Could we then predict which 
+investors go after which type of loans?  Could we gain insights into how 
+to market to low and high risk investors differently to attract more? 
+
+### Plot Three
+
+```{r echo=FALSE, Plot_Three, warning=FALSE}
+
+p1<- ggplot(data=prosper_score_by_DTI,
+       aes(x=ProsperScore,y=mean)) +
+  geom_bar(stat='identity',color = I('black'), fill = I('#099DD9')) +
+  ylab("mean debt to income ratio") +
+  xlab("Prosper score") +
+  labs (title = "mean debt to income by Prosper score")
+  
+p2<- ggplot(data=prosper_score_by_credit,
+       aes(x=ProsperScore,y=mean)) +
+  geom_bar(stat='identity',color = I('black'), fill = I('#099DD9')) +
+  scale_y_continuous(limits=c(650,800),oob = rescale_none) +
+  ylab("mean credit score") +
+  xlab("Prosper score")+
+  labs (title = "mean credit score by Prosper score") 
+  
+  
+
+grid.arrange(p1,p2) 
+
+```
+
+### Description Three
+
+Finally, we see that the prosper score is related to both 
+debt to income ratio and credit score.  The higher the 
+prosper score, the lower the risk.  Prosper is using this score to advise 
+investors.  Therefore, going forward with more recent data, we should be 
+able to predict the number of investors based on the prosper score more so 
+than other factors such as occupation.  
+
+------
+
+# Reflection
+
+Investors are looking for a safe return on investment with the exception 
+of a very small number of high risk loans.  
+We don't know the amount that each investor put toward each loan
+and we don't know the number of distinct investors.  Prosper score was added
+after the 2008 recession for the purpose of guiding investors and is using
+at least some of the same variables which investors were using individually 
+prior to 2009.  
+
+Future work could look into whether or not investors are choosing wisely.  
+The fields preceeded with "LP_" 
+- LP_CustomerPayments
+- LP_CustomerPrincipalPayments
+- LP_InterestandFees
+- LP_ServiceFees
+- LP_CollectionFees
+- LP_GrossPrincipalLoss
+- LP_NetPrincipalLoss
+- LP_NonPrincipalRecoverypayments
+Could be analyzed to determine if investors are getting a strong return and 
+which investors experienced opportunity cost by investing in the wrong loans. 
+Compared the market in general, is Prosper a good choice for their portfolio?
+
+
+With more information about the small number of high risk loans and the 
+investors attracted to them, we could determine which high risk loans, if any,
+future investors should consider. 
+
+# References:
+
+https://www.nerdwallet.com/reviews/loans/personal-loans/prosper-personal-loans
+
+https://discuss.analyticsvidhya.com/t/how-to-count-number-of-distinct-values-in-a-column-of-a-data-table-in-r/1124/2
+
+https://stackoverflow.com/questions/50935857/ggplot2-keeps-adding-5-at-end-of-year-variable-on-x-axis
+
+https://www.roelpeters.be/scale-ggplot-y-axis-millions-or-thousands-r/
